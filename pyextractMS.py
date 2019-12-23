@@ -1,3 +1,13 @@
+###################################
+#Library of functions to extract and 
+#plot data from Thermo RAW files
+#relies on MSFileReader python 
+#bindings from Francois Allen
+#Joey Davis
+#jhdavislab.com
+#jhdavis@mit.edu
+###################################
+
 import MSFileReader
 import numpy as np
 from matplotlib import pylab as plt
@@ -6,6 +16,7 @@ from scipy import interpolate
 import pysoquant_report_defs_v1 as defs
 
 __VERSION__='0.1.0'
+
 ###########################################
 #######Thermo Raw file utilities###########
 ###########################################
