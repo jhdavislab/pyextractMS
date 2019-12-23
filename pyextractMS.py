@@ -1,11 +1,11 @@
 import MSFileReader
 import numpy as np
-import seaborn as sns
 from matplotlib import pylab as plt
 from matplotlib import cm
 from scipy import interpolate
 import pysoquant_report_defs_v1 as defs
 
+__VERSION__='0.1.0'
 ###########################################
 #######Thermo Raw file utilities###########
 ###########################################
@@ -464,6 +464,41 @@ def plot_xics(rawfile, fig_axis=None, colors=cm.get_cmap(name='plasma'), mass_ac
     fig_axis.text(0.1, 0.9, 'XICs', transform=fig_axis.transAxes)
     return fig_axis
 
+def plot_pressure_traces(rawfile, fig_axis=None, rt_range=None, colors=['red', 'blue']):
+    '''Plot a series of extracted ion chromatograms from a single injection - can be used to inspect standard peptides
+    Args:
+        rawfile (string to thermo rawfile): string pointing to a Thermo rawfile or on opened rawfile
+        fig_axis (matplotlib figure axis: optional): if provided, data will be plotted on this axis,
+                                                       otherwise a new figure axis is created.
+        colors (list of strings): colors to plot for [0]=gradient_pump; [1]:loading_pump (defaults to red, blue)
+        rt_range (list of floats: optional): retention time range to highlight/zoom around given RT. Default=full range
+            
+        Returns:
+            matplotlib figure axis
+        
+        Usage:
+            new_fig_axis = plot_pressure_traces(file_name)
+    '''
+    if type(rawfile) is str:
+        rawfile = MSFileReader.ThermoRawfile(rawfile)
+    
+    if fig_axis is None:
+        fig, fig_axis = plt.subplots(1)
+
+    rawfile.SetCurrentController('A/D card', 1)
+    loading_pump_chro_data = np.array(rawfile.GetChroData())[0]
+    rawfile.SetCurrentController('A/D card', 2)
+    gradient_pump_chro_data = np.array(rawfile.GetChroData())[0]
+    
+    fig_axis.plot(gradient_pump_chro_data[0], gradient_pump_chro_data[1], color=colors[0], linewidth=.5)
+    fig_axis.set_xlabel('retention time (minutes)')
+    fig_axis.set_ylabel('pressure (gradient pump)', color=colors[0])
+    fig_axis2 = fig_axis.twinx()
+    fig_axis2.plot(loading_pump_chro_data[0], loading_pump_chro_data[1], color=colors[1], linewidth=.5)
+    fig_axis2.set_ylabel('pressure (loading pump)', color=colors[1])
+    fig_axis.grid()
+    return fig_axis
+    
 ###########################################
 #######  Helper functions  ################
 ###########################################
