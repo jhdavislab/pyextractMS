@@ -15,7 +15,7 @@ from matplotlib import cm
 from scipy import interpolate
 import pysoquant_report_defs_v1 as defs
 
-__VERSION__='0.1.0'
+__VERSION__='0.1.1'
 
 ###########################################
 #######Thermo Raw file utilities###########
@@ -39,14 +39,21 @@ def get_all_scan_numbers(rawfile, ms_level=1, rt_range=None):
         rawfile = MSFileReader.ThermoRawfile(rawfile)
     
     if rt_range is None:
-        start = rawfile.FirstSpectrumNumber
-        end = rawfile.LastSpectrumNumber
+        start_scan = rawfile.FirstSpectrumNumber
+        end_scan = rawfile.LastSpectrumNumber
     else:
-        start = rawfile.ScanNumFromRT(rt_range[0])
-        end = rawfile.ScanNumFromRT(rt_range[1])
+        try:
+            start_scan = rawfile.ScanNumFromRT(rt_range[0])
+            end_scan = rawfile.ScanNumFromRT(rt_range[1])
+        except OSError:
+            start_scan = rawfile.FirstSpectrumNumber
+            end_scan = rawfile.LastSpectrumNumber
+            start_RT = rawfile.RTFromScanNum(start_scan)
+            end_RT = rawfile.RTFromScanNum(end_scan)
+            print("provided retention time range (" + str(rt_range) + " is not valid for this .raw file. Reverting to use the full scan range (" + str([start_RT, end_RT]) + ").")
         
     scan_list = []
-    for i in range(start, end+1):
+    for i in range(start_scan, end_scan+1):
         scan_type = rawfile.GetMSOrderForScanNum(i)
         if scan_type == ms_level:
             scan_list.append(i)
@@ -72,12 +79,12 @@ def get_ms2_scans(rawfile, precursor_mz, rt_range=None):
         rawfile = MSFileReader.ThermoRawfile(rawfile)
     
     allms2 = get_all_scan_numbers(rawfile, ms_level=2, rt_range=rt_range)
-    
     filled_scans = []
     for scan_num in allms2:
-        current_scan = rawfile.GetTrailerExtraForScanNum(scan_num)
-        current_mz_range_min = current_scan['Monoisotopic M/Z'] - current_scan['MS2 Isolation Width']/2.0
-        current_mz_range_max = current_scan['Monoisotopic M/Z'] + current_scan['MS2 Isolation Width']/2.0
+        current_trail = rawfile.GetTrailerExtraForScanNum(scan_num)
+        mono_mz = rawfile.GetPrecursorMassForScanNum(scan_num, 2)
+        current_mz_range_min = mono_mz - current_trail['MS2 Isolation Width']/2.0
+        current_mz_range_max = mono_mz + current_trail['MS2 Isolation Width']/2.0
         if (precursor_mz >= current_mz_range_min) and (precursor_mz <= current_mz_range_max):
             filled_scans.append(scan_num)
     return np.array(filled_scans)
@@ -101,10 +108,21 @@ def get_xic(rawfile, rt_range, mz_range, scan_filter = "Full ms "):
     if type(rawfile) is str:
         rawfile = MSFileReader.ThermoRawfile(rawfile)
     
-    time_array, intensity_array = rawfile.GetChroData(startTime=rt_range[0],
+    try:
+        time_array, intensity_array = rawfile.GetChroData(startTime=rt_range[0],
                                        endTime=rt_range[1],
                                        massRange1="{}-{}".format(mz_range[0], mz_range[1]),
                                        scanFilter="Full ms ")[0]
+    except OSError:
+        start_scan = rawfile.FirstSpectrumNumber
+        end_scan = rawfile.LastSpectrumNumber
+        start_RT = rawfile.RTFromScanNum(start_scan)
+        end_RT = rawfile.RTFromScanNum(end_scan)
+        
+        print("provided retention time range (" + str(rt_range) + ") is not valid for this .raw file for the XICs. Reverting to use the full scan range (" + str([start_RT,end_RT])+").")
+        time_array, intensity_array = rawfile.GetChroData(startTime=start_RT, endTime=end_RT,
+                                                          massRange1="{}-{}".format(mz_range[0], mz_range[1]),
+                                                          scanFilter="Full ms ")[0]
     
     return np.array(list(zip(time_array, intensity_array)))
 
@@ -225,8 +243,8 @@ def plot_tic(rawfile, fig_axis=None, rt_range=None, color='black'):
         fig, fig_axis = plt.subplots(1)
 
     fig_axis.plot(rt_times, total_ion_current, color=color, linewidth=.2)
-    fig_axis.set_xlabel('retention time (minutes)')
-    fig_axis.set_ylabel('total ion current')
+    fig_axis.set_xlabel('RT (mins)')
+    fig_axis.set_ylabel('TIC')
     fig_axis.text(0.1, 0.9, 'total ion current = ' + '{:.2e}'.format(total_tic), transform=fig_axis.transAxes)
     fig_axis.grid()
     return fig_axis
@@ -268,8 +286,8 @@ def plot_bpc(rawfile, fig_axis=None, rt_range=None, color='black'):
     if fig_axis is None:
         fig, fig_axis = plt.subplots(1)
     fig_axis.plot(rt_times, base_peak_current, color=color, linewidth=.2)
-    fig_axis.set_xlabel('retention time (minutes)')
-    fig_axis.set_ylabel('base peak chromatogram')
+    fig_axis.set_xlabel('RT (mins)')
+    fig_axis.set_ylabel('BPC')
     fig_axis.text(0.1, 0.9, 'total base current = ' + '{:.2e}'.format(total_bpc), transform=fig_axis.transAxes)
     fig_axis.grid()
     return fig_axis
@@ -344,8 +362,8 @@ def plot_cycle_time(rawfile, fig_axis=None, rt_range=None, color='black'):
         fig, fig_axis = plt.subplots(1)
 
     fig_axis.scatter(rt_times, cycle_times, alpha=0.2, s=1, color=color)
-    fig_axis.set_xlabel('retention time (minutes)')
-    fig_axis.set_ylabel('cycles time (seconds)')
+    fig_axis.set_xlabel('RT (mins)')
+    fig_axis.set_ylabel('cycles time (secs)')
     fig_axis.grid()
     return fig_axis
 
@@ -377,7 +395,7 @@ def plot_inj_times(rawfile, ms_level, fig_axis=None, rt_range=None, num_bins=50,
     inj_times = [rawfile.GetTrailerExtraForScanNum(scan_num)['Ion Injection Time (ms)'] for scan_num in scans]
     fig_axis.hist(inj_times, bins=num_bins, color=color)
     fig_axis.set_xlabel('injection time (ms)')
-    fig_axis.set_ylabel('number injections')
+    fig_axis.set_ylabel('# scans')
     if rt_range is None:
         rt_range_string = 'all'
     else:
@@ -500,13 +518,13 @@ def plot_pressure_traces(rawfile, fig_axis=None, rt_range=None, colors=['red', '
     loading_pump_chro_data = np.array(rawfile.GetChroData())[0]
     rawfile.SetCurrentController('A/D card', 2)
     gradient_pump_chro_data = np.array(rawfile.GetChroData())[0]
-    
+    rawfile.SetCurrentController('MS', 1)
     fig_axis.plot(gradient_pump_chro_data[0], gradient_pump_chro_data[1], color=colors[0], linewidth=.5)
-    fig_axis.set_xlabel('retention time (minutes)')
-    fig_axis.set_ylabel('pressure (gradient pump)', color=colors[0])
+    fig_axis.set_xlabel('RT (mins)')
+    fig_axis.set_ylabel('grad pressure', color=colors[0])
     fig_axis2 = fig_axis.twinx()
     fig_axis2.plot(loading_pump_chro_data[0], loading_pump_chro_data[1], color=colors[1], linewidth=.5)
-    fig_axis2.set_ylabel('pressure (loading pump)', color=colors[1])
+    fig_axis2.set_ylabel('load pressure', color=colors[1])
     fig_axis.grid()
     return fig_axis
     
