@@ -15,7 +15,7 @@ from matplotlib import cm
 from scipy import interpolate
 import pysoquant_report_defs_v1 as defs
 
-__VERSION__='0.1.1'
+__VERSION__='0.1.2'
 
 ###########################################
 #######Thermo Raw file utilities###########
@@ -123,7 +123,6 @@ def get_xic(rawfile, rt_range, mz_range, scan_filter = "Full ms "):
         time_array, intensity_array = rawfile.GetChroData(startTime=start_RT, endTime=end_RT,
                                                           massRange1="{}-{}".format(mz_range[0], mz_range[1]),
                                                           scanFilter="Full ms ")[0]
-    
     return np.array(list(zip(time_array, intensity_array)))
 
 def extract_ms_spectra(rawfile, scan_num, mz_range=[-1,10000]):
@@ -203,7 +202,7 @@ def sum_ms_spectra(rawfile, scan_list, mz_range, sig_dec=3):
     return np.column_stack((summed_mz, summed_int))
 
 ###########################################
-#######Plotting utilities###
+#######_ms_ting utilities###
 ###########################################
 def plot_tic(rawfile, fig_axis=None, rt_range=None, color='black'):
     '''Plot total ion chromatograms from a Thermo RawFile 
@@ -439,15 +438,14 @@ def plot_ms_spectra(ms_spectra, title='mass spectra', fig_axis=None, figsize=(5,
     fig_axis.grid()
     return fig_axis
 
-def plot_xics(rawfile, fig_axis=None, colors=cm.get_cmap(name='plasma'), mass_accuracy=0.01, rt_window=5, 
-              peptides={'HVLTSIGEK':[496.2867,30], \
-                    'DIPVPKPK':[451.2835,36.5], \
-                    'IGDYAGIK':[422.7364,40.5], \
-                    'TASEFDSAIAQDK':[695.8324,46.75], \
-                    'SAAGAFGPELSR':[586.8003,49.5], \
-                    'SFANQPLEVVYSK':[745.3925,60.5], \
-                    'ELASGLSFPVGFK':[680.3736,74.5], \
-                    'LSSEAPALFQFDLK':[787.4212,78.5]}):
+def plot_xics(rawfile, fig_axis=None, colors=cm.get_cmap(name='plasma'), mass_accuracy=0.01, rt_window=7.5, 
+              peptides={'DIPVPKPK':[451.2835,43.5], \
+                    'IGDYAGIK':[422.7364,47.5], \
+                    'TASEFDSAIAQDK':[695.8324,53.5], \
+                    'SAAGAFGPELSR':[586.8003,56.5], \
+                    'SFANQPLEVVYSK':[745.3925,67.5], \
+                    'ELASGLSFPVGFK':[680.3736,81.5], \
+                    'LSSEAPALFQFDLK':[787.4212,85.5]}):
 
     '''Plot a series of extracted ion chromatograms from a single injection - can be used to inspect standard peptides
 
@@ -474,7 +472,7 @@ def plot_xics(rawfile, fig_axis=None, colors=cm.get_cmap(name='plasma'), mass_ac
         fig, fig_axis = plt.subplots(1)
         
     total_peptides = len(peptides.keys())
-        
+    all_rts = []
     for peptide_num, peptide in enumerate(peptides.keys()):
         m_z = peptides[peptide][0]
         rt = peptides[peptide][1]
@@ -482,15 +480,21 @@ def plot_xics(rawfile, fig_axis=None, colors=cm.get_cmap(name='plasma'), mass_ac
         full_xic = get_xic(mz_range=[m_z-mass_accuracy,m_z+mass_accuracy], rawfile=rawfile,
                                    rt_range=[rt-rt_window, rt+rt_window])
         peak_max_rt, peak_max_intensity = get_max_rt(full_xic)
+        all_rts.append(peak_max_rt)
     
         target_xic = get_xic(mz_range=[m_z-mass_accuracy,m_z+mass_accuracy], rawfile=rawfile, 
-                                    rt_range=[peak_max_rt-rt_window, peak_max_rt+rt_window])
+                                    rt_range=[peak_max_rt-rt_window/4, peak_max_rt+rt_window/4])
         
-        fig_axis.plot(target_xic[:,0], target_xic[:,1], color=color, linewidth=0.75)
-        fig_axis.axvline(peak_max_rt, linestyle='dotted', color=color, alpha=0.75, linewidth=.25)
+        fig_axis.plot(target_xic[:,0], target_xic[:,1], color=color, linewidth=0.75, label=peptide)
+        fig_axis.axvline(peak_max_rt, linestyle='dotted', color=color, alpha=0.75, linewidth=1)
     fig_axis.set_xlabel('retention time (mins)')
     fig_axis.set_ylabel('intensity')
+    all_rts_np = np.array(all_rts)
+    xmin = all_rts_np.min()-rt_window
+    xmax= all_rts_np.max()+((all_rts_np.max()-all_rts_np.min())/2)
+    fig_axis.set_xlim(xmin,xmax)
     fig_axis.text(0.1, 0.9, 'XICs', transform=fig_axis.transAxes)
+    fig_axis.legend(loc='center left', bbox_to_anchor=(0.75, 0.5))
     return fig_axis
 
 def plot_pressure_traces(rawfile, fig_axis=None, rt_range=None, colors=['red', 'blue']):
